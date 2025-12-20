@@ -9,81 +9,71 @@ import UIKit
 
 class ViewController: UIViewController {
     
-    // MARK: - UI Elements
+    private let viewModel = MainViewModel()
     
     private let gradientLayer = CAGradientLayer()
     
-    private let garlandImageView: UIImageView = {
-        let iv = UIImageView(image: UIImage(named: "garland"))
+    // MARK: - UI Elements
+    
+    private lazy var garlandImageView: UIImageView = {
+        let iv = UIImageView(image: viewModel.garlandImage)
         iv.contentMode = .scaleAspectFill
         iv.translatesAutoresizingMaskIntoConstraints = false
         return iv
     }()
     
-    private let titleLabel: UILabel = {
+    private lazy var titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "JingleEat 🎄"
-        label.font = .systemFont(ofSize: 38, weight: .black) // Сделали жирнее
-        label.textColor = UIColor(red: 0.35, green: 0.18, blue: 0.05, alpha: 1.0)
+        label.text = viewModel.titleText
+        label.font = .systemFont(ofSize: 38, weight: .black)
+        label.textColor = viewModel.titleColor
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
-    private let descriptionLabel: UILabel = {
+    private lazy var descriptionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Получайте вдохновления для праздничного стола вместе с JingleEat!"
+        label.text = viewModel.descriptionText
         label.font = .systemFont(ofSize: 16, weight: .medium)
-        label.textColor = UIColor(red: 0.55, green: 0.35, blue: 0.25, alpha: 1.0)
+        label.textColor = viewModel.descriptionColor
         label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
-    private let gingerbreadImageView: UIImageView = {
-        let iv = UIImageView(image: UIImage(named: "ginger"))
+    private lazy var gingerbreadImageView: UIImageView = {
+        let iv = UIImageView(image: viewModel.gingerImage)
         iv.contentMode = .scaleAspectFit
         iv.translatesAutoresizingMaskIntoConstraints = false
         return iv
     }()
     
-    private let registerButton: UIButton = {
+    private lazy var registerButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Регистрация", for: .normal)
         button.backgroundColor = UIColor(red: 0.11, green: 0.38, blue: 0.19, alpha: 1.0)
         button.setTitleColor(.white, for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 20, weight: .bold)
-        
         button.layer.cornerRadius = 18
         button.layer.borderWidth = 2.5
         button.layer.borderColor = UIColor(red: 0.83, green: 0.69, blue: 0.22, alpha: 1.0).cgColor
-        
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOffset = CGSize(width: 0, height: 5)
-        button.layer.shadowRadius = 8
-        button.layer.shadowOpacity = 0.2
-        
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(didTapRegister), for: .touchUpInside)
         return button
     }()
     
-    private let loginButton: UIButton = {
+    private lazy var loginButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Войти", for: .normal)
         button.backgroundColor = UIColor(red: 0.76, green: 0.15, blue: 0.15, alpha: 1.0)
         button.setTitleColor(.white, for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 20, weight: .bold)
-        
         button.layer.cornerRadius = 18
         button.layer.borderWidth = 2.5
         button.layer.borderColor = UIColor(red: 0.83, green: 0.69, blue: 0.22, alpha: 1.0).cgColor
-        
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOffset = CGSize(width: 0, height: 5)
-        button.layer.shadowRadius = 8
-        button.layer.shadowOpacity = 0.2
-        
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(didTapLogin), for: .touchUpInside)
         return button
     }()
     
@@ -93,12 +83,9 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         setupBackground()
         
-        view.addSubview(garlandImageView)
-        view.addSubview(titleLabel)
-        view.addSubview(gingerbreadImageView)
-        view.addSubview(descriptionLabel)
-        view.addSubview(registerButton)
-        view.addSubview(loginButton)
+        [garlandImageView, titleLabel, gingerbreadImageView, descriptionLabel, registerButton, loginButton].forEach {
+            view.addSubview($0)
+        }
         
         setupConstraints()
     }
@@ -113,26 +100,40 @@ class ViewController: UIViewController {
         startGingerAnimation()
     }
     
+    // MARK: - Actions
+    
+    @objc private func didTapRegister() {
+        viewModel.registerTapped()
+        let vc = RegistrationViewController()
+        vc.modalPresentationStyle = .fullScreen
+        self.present(vc, animated: true)
+    }
+    
+    @objc private func didTapLogin() {
+        viewModel.loginTapped()
+    }
+    
     // MARK: - Setup
     
     private func setupBackground() {
+        // 1. Установи основной цвет вьюхи белым или светло-голубым,
+        // чтобы блюру было что "размывать" кроме темноты
+        view.backgroundColor = UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1.0)
+        
+        // 2. Градиент
         gradientLayer.colors = [
-            UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1.0).cgColor, UIColor.white.cgColor
+            UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1.0).cgColor,
+            UIColor.white.cgColor
         ]
+        gradientLayer.frame = view.bounds
         view.layer.insertSublayer(gradientLayer, at: 0)
         
-        let blurEffect = UIBlurEffect(style: .extraLight)
+        // 3. Блюр (сделай его поярче)
+        let blurEffect = UIBlurEffect(style: .light) // Попробуй .light вместо .extraLight
         let blurView = UIVisualEffectView(effect: blurEffect)
         blurView.frame = view.bounds
-        blurView.alpha = 0.4
-        blurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        blurView.alpha = 0.6 // Увеличь альфу, чтобы скрыть "грязь" под ним
         view.insertSubview(blurView, at: 1)
-        
-        let ice = UIView(frame: view.bounds)
-        ice.backgroundColor = UIColor.white.withAlphaComponent(0.2)
-        ice.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.insertSubview(ice, at: 2)
-        
     }
     
     private func setupConstraints() {
@@ -166,16 +167,11 @@ class ViewController: UIViewController {
         ])
     }
     
-    // MARK: - Animations
-    
     private func startGingerAnimation() {
         UIView.animate(withDuration: 2.0, delay: 0, options: [.autoreverse, .repeat, .allowUserInteraction], animations: {
-            
             let rotation = CGAffineTransform(rotationAngle: 0.05)
             let scale = CGAffineTransform(scaleX: 1.05, y: 1.05)
-            
             self.gingerbreadImageView.transform = rotation.concatenating(scale)
-            
         }, completion: nil)
         
         UIView.animate(withDuration: 1.5, delay: 0, options: [.autoreverse, .repeat], animations: {
