@@ -97,7 +97,6 @@ class ViewController: UIViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        startGingerAnimation()
     }
     
     // MARK: - Actions
@@ -111,6 +110,9 @@ class ViewController: UIViewController {
     
     @objc private func didTapLogin() {
         viewModel.loginTapped()
+        let loginVC = LoginViewController()
+        loginVC.modalPresentationStyle = .fullScreen
+        present(loginVC, animated: true)
     }
     
     // MARK: - Setup
@@ -167,13 +169,16 @@ class ViewController: UIViewController {
         ])
     }
     
-    private func startGingerAnimation() {
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        self.gingerbreadImageView.transform = .identity
+        self.gingerbreadImageView.alpha = 1.0
         UIView.animate(withDuration: 2.0, delay: 0, options: [.autoreverse, .repeat, .allowUserInteraction], animations: {
             let rotation = CGAffineTransform(rotationAngle: 0.05)
             let scale = CGAffineTransform(scaleX: 1.05, y: 1.05)
             self.gingerbreadImageView.transform = rotation.concatenating(scale)
         }, completion: nil)
-        
+        self.garlandImageView.alpha = 1.0
         UIView.animate(withDuration: 1.5, delay: 0, options: [.autoreverse, .repeat], animations: {
             self.garlandImageView.alpha = 0.8
         }, completion: nil)

@@ -119,10 +119,13 @@ class RegistrationViewController: UIViewController {
     }
     
     @objc private func registerTapped() {
-
         if viewModel.validateAndRegister() {
-            print("Успешная регистрация!")
-            self.dismiss(animated: true)
+            // Меняем корень приложения на TabBar
+            if let sceneDelegate = view.window?.windowScene?.delegate as? SceneDelegate {
+                let tabBar = MainTabBarController()
+                sceneDelegate.window?.rootViewController = tabBar
+                UIView.transition(with: sceneDelegate.window!, duration: 0.3, options: .transitionCrossDissolve, animations: nil)
+            }
         } else {
             errorLabel.text = viewModel.errorMessage
             errorLabel.isHidden = false
