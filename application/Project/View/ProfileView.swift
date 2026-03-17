@@ -1,25 +1,20 @@
-import SwiftUI
-import AVKit
+import UIKit
+import AVFoundation
 
-struct ProfileView: View {
-    @State private var recipes: [Recipe] = []
-    @State private var selectedTab = 0
+class ProfileViewController: UIViewController, UICollectionViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
+    private let backgroundView = ChristmasBackgroundView()
+    private let scrollView = UIScrollView()
+    private let contentView = UIView()
+    private let usernameLabel = UILabel()
+    private let settingsButton = UIButton(type: .system)
+    private let avatarImageView = UIImageView()
+    private let statsStackView = UIStackView()
+    private let tabsStackView = UIStackView()
+    private var collectionView: UICollectionView!
     
-    @Environment(\.colorScheme) var colorScheme
-    var iceColor: Color {
-        colorScheme == .dark ? Color(red: 0.2, green: 0.2, blue: 0.25) : Color(red: 0.85, green: 0.92, blue: 1.0)
-    }
-    var chocolateColor: Color {
-        colorScheme == .dark ? .white : Color(red: 0.35, green: 0.18, blue: 0.05)
-    }
-    
-    private let columns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
-    ]
-    
-    var filteredRecipes: [Recipe] {
+    private var recipes: [Recipe] = []
+    private var selectedTab = 0
+    private var filteredRecipes: [Recipe] {
         switch selectedTab {
         case 0: return recipes.filter { $0.isMyVideo }
         case 1: return recipes.filter { $0.isLiked }
@@ -28,198 +23,257 @@ struct ProfileView: View {
         }
     }
     
-    var myVideosCount: Int { recipes.filter { $0.isMyVideo }.count }
-    var likesCount: Int { recipes.filter { $0.isLiked }.count }
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                ChristmasBackground()
-                    .ignoresSafeArea()
-                
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        
-                        ZStack(alignment: .trailing) {
-                            Text("@JingleEat")
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(chocolateColor)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 10)
-                            
-                            // Кнопка настроек
-                            NavigationLink(destination: SettingsView()) {
-                                HStack(spacing: 6) {
-                                    Text("settings")
-                                        .font(.system(size: 14, weight: .medium))
-                                    Image("settings")
-                                        .resizable()
-                                        .renderingMode(.template)
-                                        .frame(width: 18, height: 18)
-                                }
-                                .foregroundColor(chocolateColor)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(iceColor)
-                                .cornerRadius(12)
-                                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 40)
-
-                        HStack(alignment: .center, spacing: 20) {
-                            Image("tap_profile_green")
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 90, height: 90)
-                                .background(Color.white.opacity(0.85))
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white, lineWidth: 3))
-                                .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
-                            
-                            HStack(spacing: 15) {
-                                StatView(value: "\(myVideosCount)", title: "Рецептов")
-                                StatView(value: "\(likesCount)", title: "Лайков")
-                                // ИЗМЕНЕНИЕ 2: Убрали "Сохраненные"
-                                StatView(value: "50k", title: "Подписч.")
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        
-                        HStack(spacing: 12) {
-                            SmallTabButton(icon: "square.grid.3x3.fill", isSelected: selectedTab == 0) { selectedTab = 0 }
-                            SmallTabButton(icon: "heart.fill", isSelected: selectedTab == 1) { selectedTab = 1 }
-                            SmallTabButton(icon: "bookmark.fill", isSelected: selectedTab == 2) { selectedTab = 2 }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-                        
-                        Rectangle()
-                            .fill(chocolateColor.opacity(0.1))
-                            .frame(height: 1)
-                            .padding(.horizontal, 20)
-
-                        // === СЕТКА ===
-                        if filteredRecipes.isEmpty {
-                            VStack(spacing: 15) {
-                                Image(systemName: "video.slash")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.gray.opacity(0.5))
-                                Text("Здесь пока пусто")
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.top, 60)
-                        } else {
-                            LazyVGrid(columns: columns, spacing: 2) {
-                                ForEach(filteredRecipes) { recipe in
-                                    NavigationLink(destination: SingleVideoView(recipe: recipe)) {
-                                        VideoThumbnail(recipe: recipe)
-                                            .frame(height: 180)
-                                            .clipped()
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 2)
-                        }
-                    }
-                    .padding(.bottom, 100)
-                }
-            }
-            .navigationBarHidden(true)
-        }
-        .onAppear { loadData() }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RecipesUpdated"))) { _ in loadData() }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+        loadData()
+        NotificationCenter.default.addObserver(self, selector: #selector(loadData), name: NSNotification.Name("RecipesUpdated"), object: nil)
     }
     
-    private func loadData() {
+    private func setupUI() {
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundView)
+        
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsVerticalScrollIndicator = false
+        view.addSubview(scrollView)
+        
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(contentView)
+        
+        let chocolateColor = traitCollection.userInterfaceStyle == .dark ? UIColor.white : AppTheme.Colors.chocolate
+        let iceColor = traitCollection.userInterfaceStyle == .dark ? UIColor(red: 0.2, green: 0.2, blue: 0.25, alpha: 1.0) : UIColor(red: 0.85, green: 0.92, blue: 1.0, alpha: 1.0)
+        
+        usernameLabel.text = "@JingleEat"
+        usernameLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        usernameLabel.textColor = chocolateColor
+        usernameLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(usernameLabel)
+        
+        settingsButton.setImage(UIImage(named: "settings")?.withRenderingMode(.alwaysTemplate), for: .normal)
+        settingsButton.setTitle("settings", for: .normal)
+        settingsButton.tintColor = chocolateColor
+        settingsButton.backgroundColor = iceColor
+        settingsButton.layer.cornerRadius = 12
+        settingsButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+        settingsButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 0)
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        contentView.addSubview(settingsButton)
+        
+        avatarImageView.image = UIImage(named: "tap_profile_green")
+        avatarImageView.contentMode = .scaleAspectFill
+        avatarImageView.backgroundColor = UIColor.white.withAlphaComponent(0.85)
+        avatarImageView.layer.cornerRadius = 45
+        avatarImageView.layer.borderWidth = 3
+        avatarImageView.layer.borderColor = UIColor.white.cgColor
+        avatarImageView.clipsToBounds = true
+        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(avatarImageView)
+        
+        statsStackView.axis = .horizontal
+        statsStackView.distribution = .fillEqually
+        statsStackView.spacing = 15
+        statsStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(statsStackView)
+        
+        tabsStackView.axis = .horizontal
+        tabsStackView.distribution = .fillEqually
+        tabsStackView.spacing = 12
+        tabsStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(tabsStackView)
+        
+        let layout = UICollectionViewFlowLayout()
+        layout.minimumInteritemSpacing = 2
+        layout.minimumLineSpacing = 2
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = .clear
+        collectionView.delegate = self
+        collectionView.dataSource = self
+        collectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
+        collectionView.isScrollEnabled = false
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(collectionView)
+        
+        NSLayoutConstraint.activate([
+            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            
+            usernameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 60),
+            usernameLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            
+            settingsButton.centerYAnchor.constraint(equalTo: usernameLabel.centerYAnchor),
+            settingsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            settingsButton.heightAnchor.constraint(equalToConstant: 34),
+            settingsButton.widthAnchor.constraint(equalToConstant: 90),
+            
+            avatarImageView.topAnchor.constraint(equalTo: usernameLabel.bottomAnchor, constant: 20),
+            avatarImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            avatarImageView.widthAnchor.constraint(equalToConstant: 90),
+            avatarImageView.heightAnchor.constraint(equalToConstant: 90),
+            
+            statsStackView.centerYAnchor.constraint(equalTo: avatarImageView.centerYAnchor),
+            statsStackView.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 20),
+            statsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            
+            tabsStackView.topAnchor.constraint(equalTo: avatarImageView.bottomAnchor, constant: 20),
+            tabsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            tabsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            tabsStackView.heightAnchor.constraint(equalToConstant: 44),
+            
+            collectionView.topAnchor.constraint(equalTo: tabsStackView.bottomAnchor, constant: 20),
+            collectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 2),
+            collectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -2),
+            collectionView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -100),
+            collectionView.heightAnchor.constraint(equalToConstant: 500) // Обновляется динамически
+        ])
+        
+        setupTabs()
+    }
+    
+    @objc private func loadData() {
         recipes = StorageService.shared.loadRecipes()
+        updateStats()
+        updateTabsUI()
+        collectionView.reloadData()
+        
+        let rows = ceil(Double(filteredRecipes.count) / 3.0)
+        let height = max(500, rows * 182)
+        collectionView.constraints.first { $0.firstAttribute == .height }?.constant = CGFloat(height)
+    }
+    
+    private func updateStats() {
+        statsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let myCount = recipes.filter { $0.isMyVideo }.count
+        let likesCount = recipes.filter { $0.isLiked }.count
+        
+        statsStackView.addArrangedSubview(createStatView(value: "\(myCount)", title: "Рецептов"))
+        statsStackView.addArrangedSubview(createStatView(value: "\(likesCount)", title: "Лайков"))
+        statsStackView.addArrangedSubview(createStatView(value: "50k", title: "Подписч."))
+    }
+    
+    private func createStatView(value: String, title: String) -> UIView {
+        let view = UIStackView()
+        view.axis = .vertical
+        view.alignment = .center
+        let valLabel = UILabel()
+        valLabel.text = value
+        valLabel.font = .systemFont(ofSize: 17, weight: .bold)
+        valLabel.textColor = traitCollection.userInterfaceStyle == .dark ? .white : AppTheme.Colors.chocolate
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .systemFont(ofSize: 10)
+        titleLabel.textColor = .gray
+        view.addArrangedSubview(valLabel)
+        view.addArrangedSubview(titleLabel)
+        return view
+    }
+    
+    private func setupTabs() {
+        let icons = ["square.grid.3x3.fill", "heart.fill", "bookmark.fill"]
+        for (i, icon) in icons.enumerated() {
+            let btn = UIButton(type: .system)
+            btn.setImage(UIImage(systemName: icon), for: .normal)
+            btn.layer.cornerRadius = 12
+            btn.tag = i
+            btn.addTarget(self, action: #selector(tabTapped(_:)), for: .touchUpInside)
+            tabsStackView.addArrangedSubview(btn)
+        }
+    }
+    
+    @objc private func tabTapped(_ sender: UIButton) {
+        selectedTab = sender.tag
+        loadData()
+    }
+    
+    private func updateTabsUI() {
+        let isDark = traitCollection.userInterfaceStyle == .dark
+        let choc = AppTheme.Colors.chocolate
+        
+        for (i, view) in tabsStackView.arrangedSubviews.enumerated() {
+            guard let btn = view as? UIButton else { continue }
+            let isSelected = i == selectedTab
+            btn.tintColor = isSelected ? (isDark ? choc : .white) : (isDark ? .white : choc)
+            btn.backgroundColor = isSelected ? (isDark ? .white : choc) : (isDark ? UIColor.white.withAlphaComponent(0.15) : UIColor.white.withAlphaComponent(0.5))
+        }
+    }
+    
+    @objc private func openSettings() {
+        let vc = SettingsViewController()
+        navigationController?.pushViewController(vc, animated: true)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return filteredRecipes.count
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
+        cell.configure(with: filteredRecipes[indexPath.item])
+        return cell
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let width = (collectionView.bounds.width - 4) / 3
+        return CGSize(width: width, height: 180)
     }
 }
 
-struct SmallTabButton: View {
-    let icon: String
-    let isSelected: Bool
-    let action: () -> Void
+class VideoThumbnailCell: UICollectionViewCell {
+    private let imageView = UIImageView()
+    private let loader = UIActivityIndicatorView(style: .medium)
     
-    @Environment(\.colorScheme) var colorScheme
-    
-    private let chocolate = Color(red: 0.35, green: 0.18, blue: 0.05)
-    
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundColor(
-                    isSelected
-                    ? (colorScheme == .dark ? chocolate : .white)
-                    : (colorScheme == .dark ? .white : chocolate)
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(
-                    isSelected
-                    ? (colorScheme == .dark ? .white : chocolate)
-                    : (colorScheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.5))
-                )
-                .cornerRadius(12)
-        }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.backgroundColor = UIColor.white.withAlphaComponent(0.1)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(imageView)
+        
+        loader.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(loader)
+        
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            loader.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            loader.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+        ])
     }
-}
-
-struct StatView: View {
-    let value: String
-    let title: String
+    required init?(coder: NSCoder) { fatalError() }
     
-    @Environment(\.colorScheme) var colorScheme
-    var chocolateColor: Color {
-        colorScheme == .dark ? .white : Color(red: 0.35, green: 0.18, blue: 0.05)
-    }
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value).font(.system(size: 17, weight: .bold)).foregroundColor(chocolateColor)
-            Text(title).font(.system(size: 10)).foregroundColor(.gray).lineLimit(1).minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct VideoThumbnail: View {
-    let recipe: Recipe
-    @State private var image: UIImage?
-    var body: some View {
-        ZStack {
-            if let img = image {
-                Image(uiImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Color.white.opacity(0.1)
-                ProgressView()
-            }
-        }
-        .onAppear { generateThumbnail() }
-    }
-    private func generateThumbnail() {
-        guard image == nil, let url = recipe.smartURL else { return }
+    func configure(with recipe: Recipe) {
+        imageView.image = nil
+        loader.startAnimating()
+        guard let url = recipe.smartURL else { return }
+        
         Task.detached(priority: .background) {
             let asset = AVAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             if let cgImage = try? generator.copyCGImage(at: CMTime(seconds: 1, preferredTimescale: 60), actualTime: nil) {
                 let uiImage = UIImage(cgImage: cgImage)
-                await MainActor.run { self.image = uiImage }
+                await MainActor.run {
+                    self.imageView.image = uiImage
+                    self.loader.stopAnimating()
+                }
             }
         }
-    }
-}
-
-struct SingleVideoView: View {
-    let recipe: Recipe
-    var body: some View {
-        TikTokCell(recipe: recipe)
-            .ignoresSafeArea()
-            .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -6,7 +6,8 @@ import Combine
 class VideoPlayerManager: ObservableObject {
     static let shared = VideoPlayerManager()
     
-    private var playerItemsCache: [URL: AVPlayerItem] = [:]
+    // 1. Кэшируем AVAsset, а не AVPlayerItem
+    private var assetsCache: [URL: AVAsset] = [:]
     @Published var currentPlayer: AVPlayer?
     private var currentUrl: URL?
     private var loopObserver: NSObjectProtocol?
@@ -22,16 +23,21 @@ class VideoPlayerManager: ObservableObject {
         pauseVideo()
         currentUrl = url
 
-        if let cachedItem = playerItemsCache[url] {
-            setupPlayer(with: cachedItem)
+        // 2. Если ассет в кэше есть, создаем из него НОВЫЙ AVPlayerItem
+        if let cachedAsset = assetsCache[url] {
+            let item = AVPlayerItem(asset: cachedAsset)
+            setupPlayer(with: item)
         } else {
+            // 3. Если нет - загружаем, сохраняем в кэш и создаем AVPlayerItem
             let asset = AVURLAsset(url: url)
             asset.loadValuesAsynchronously(forKeys: ["playable"]) { [weak self] in
                 Task { @MainActor in
-                    let item = AVPlayerItem(asset: asset)
-                    self?.playerItemsCache[url] = item
-                    if self?.currentUrl == url {
-                        self?.setupPlayer(with: item)
+                    guard let self = self else { return }
+                    self.assetsCache[url] = asset
+                    
+                    if self.currentUrl == url {
+                        let item = AVPlayerItem(asset: asset)
+                        self.setupPlayer(with: item)
                     }
                 }
             }

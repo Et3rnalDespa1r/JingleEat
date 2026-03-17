@@ -1,158 +1,184 @@
-//
-//  ChatViewController.swift
-//  Project
-//
-//  Created by Даниил on 21.12.2025.
-//
-import SwiftUI
+import UIKit
+import Combine
 
-struct ChatView: View {
-    @StateObject private var viewModel = ChatViewModel()
-    @FocusState private var isFocused: Bool
+class ChatViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate {
+    private let backgroundView = ChristmasBackgroundView()
+    private let tableView = UITableView()
+    private let inputContainer = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+    private let textField = UITextField()
+    private let sendButton = UIButton(type: .system)
     
-    var body: some View {
-        ZStack {
-            ChristmasBackground()
-                .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.messages) { message in
-                                MessageBubble(message: message)
-                                    .id(message.id)
-                            }
-                            
-                            if viewModel.isLoading {
-                                HStack {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .padding(10)
-                                        .background(Color.white.opacity(0.3))
-                                        .clipShape(Circle())
-                                    Spacer()
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                        .padding(.top, 60)
-                        .padding(.bottom, 20)
-                        .padding(.horizontal, 16)
-                    }
-                    .onChange(of: viewModel.messages.count) { _ in
-                        if let lastId = viewModel.messages.last?.id {
-                            withAnimation {
-                                proxy.scrollTo(lastId, anchor: .bottom)
-                            }
-                        }
-                    }
-                }
-                
-                // Поле ввода
-                HStack(spacing: 10) {
-                    TextField("Напиши шефу...", text: $viewModel.inputText)
-                        .padding(12)
-                        .background(Color.white.opacity(0.9))
-                        .foregroundColor(.black)
-                        .tint(.black)
-                        .cornerRadius(20)
-                        .focused($isFocused)
-                        .submitLabel(.send)
-                        .onSubmit {
-                            viewModel.sendMessage()
-                        }
-                    
-                    Button(action: viewModel.sendMessage) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color(red: 0.11, green: 0.38, blue: 0.19))
-                            .clipShape(Circle())
-                    }
-                    .disabled(viewModel.inputText.isEmpty)
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-            }
-        }
-        .onTapGesture {
-            isFocused = false
-        }
-    }
-}
-
-struct MessageBubble: View {
-    let message: ChatMessage
+    private let viewModel = ChatViewModel()
+    private var cancellables = Set<AnyCancellable>()
     
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            if message.isUser { Spacer() }
-            
-            VStack(alignment: .leading) {
-                Text(LocalizedStringKey(message.text))
-                    .foregroundColor(message.isUser ? .white : .black)
-                    .font(.system(size: 16))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 14)
-            .background(
-                message.isUser
-                ? Color(red: 0.11, green: 0.38, blue: 0.19)
-                : Color.white.opacity(0.95)
-            )
-            .clipShape(ChatBubbleShape(isUser: message.isUser))
-            .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-            
-            if !message.isUser { Spacer() }
-        }
-    }
-}
-
-struct ChatBubbleShape: Shape {
-    let isUser: Bool
-    
-    func path(in rect: CGRect) -> Path {
-        let width = rect.width
-        let height = rect.height
-        let radius: CGFloat = 20
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+        bindViewModel()
         
-        return Path { path in
-            if isUser {
-                path.move(to: CGPoint(x: radius, y: 0))
-                path.addLine(to: CGPoint(x: width - radius, y: 0))
-                path.addArc(center: CGPoint(x: width - radius, y: radius), radius: radius, startAngle: Angle(degrees: -90), endAngle: Angle(degrees: 0), clockwise: false)
-                path.addLine(to: CGPoint(x: width, y: height - radius))
-                path.addCurve(to: CGPoint(x: width + 2, y: height),
-                              control1: CGPoint(x: width, y: height - 8),
-                              control2: CGPoint(x: width + 2, y: height))
-                path.addCurve(to: CGPoint(x: width - 10, y: height),
-                              control1: CGPoint(x: width - 4, y: height),
-                              control2: CGPoint(x: width - 4, y: height))
-                path.addLine(to: CGPoint(x: radius, y: height))
-                path.addArc(center: CGPoint(x: radius, y: height - radius), radius: radius, startAngle: Angle(degrees: 90), endAngle: Angle(degrees: 180), clockwise: false)
-                path.addLine(to: CGPoint(x: 0, y: radius))
-                path.addArc(center: CGPoint(x: radius, y: radius), radius: radius, startAngle: Angle(degrees: 180), endAngle: Angle(degrees: 270), clockwise: false)
-                
-            } else {
-                path.move(to: CGPoint(x: width - radius, y: 0))
-                path.addLine(to: CGPoint(x: radius, y: 0))
-                path.addArc(center: CGPoint(x: radius, y: radius), radius: radius, startAngle: Angle(degrees: -90), endAngle: Angle(degrees: -180), clockwise: true)
-                path.addLine(to: CGPoint(x: 0, y: height - radius))
-                path.addCurve(to: CGPoint(x: -2, y: height),
-                              control1: CGPoint(x: 0, y: height - 8),
-                              control2: CGPoint(x: -2, y: height))
-                path.addCurve(to: CGPoint(x: 10, y: height),
-                              control1: CGPoint(x: 4, y: height),
-                              control2: CGPoint(x: 4, y: height))
-                path.addLine(to: CGPoint(x: width - radius, y: height))
-                path.addArc(center: CGPoint(x: width - radius, y: height - radius), radius: radius, startAngle: Angle(degrees: 90), endAngle: Angle(degrees: 0), clockwise: true)
-                path.addLine(to: CGPoint(x: width, y: radius))
-                path.addArc(center: CGPoint(x: width - radius, y: radius), radius: radius, startAngle: Angle(degrees: 0), endAngle: Angle(degrees: -90), clockwise: true)
-            }
-            path.closeSubpath()
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+    
+    private func setupUI() {
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundView)
+        
+        tableView.delegate = self
+        tableView.dataSource = self
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.register(ChatMessageCell.self, forCellReuseIdentifier: "ChatMessageCell")
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(tableView)
+        
+        inputContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(inputContainer)
+        
+        textField.placeholder = "Напиши шефу..."
+        textField.backgroundColor = UIColor.white.withAlphaComponent(0.9)
+        textField.textColor = .black
+        textField.layer.cornerRadius = 20
+        textField.delegate = self
+        let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 15, height: 40))
+        textField.leftView = paddingView
+        textField.leftViewMode = .always
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        inputContainer.contentView.addSubview(textField)
+        
+        sendButton.setImage(UIImage(systemName: "paperplane.fill"), for: .normal)
+        sendButton.tintColor = .white
+        sendButton.backgroundColor = AppTheme.Colors.mainGreen
+        sendButton.layer.cornerRadius = 22
+        sendButton.translatesAutoresizingMaskIntoConstraints = false
+        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+        inputContainer.contentView.addSubview(sendButton)
+        
+        NSLayoutConstraint.activate([
+            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: inputContainer.topAnchor),
+            
+            inputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            inputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            inputContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            
+            textField.topAnchor.constraint(equalTo: inputContainer.contentView.topAnchor, constant: 10),
+            textField.bottomAnchor.constraint(equalTo: inputContainer.contentView.bottomAnchor, constant: -10),
+            textField.leadingAnchor.constraint(equalTo: inputContainer.contentView.leadingAnchor, constant: 16),
+            textField.heightAnchor.constraint(equalToConstant: 44),
+            
+            sendButton.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 10),
+            sendButton.trailingAnchor.constraint(equalTo: inputContainer.contentView.trailingAnchor, constant: -16),
+            sendButton.centerYAnchor.constraint(equalTo: textField.centerYAnchor),
+            sendButton.widthAnchor.constraint(equalToConstant: 44),
+            sendButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tableView.addGestureRecognizer(tap)
+    }
+    
+    private func bindViewModel() {
+        viewModel.$messages.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.tableView.reloadData()
+            self?.scrollToBottom()
+        }.store(in: &cancellables)
+    }
+    
+    @objc private func sendTapped() {
+        guard let text = textField.text, !text.isEmpty else { return }
+        viewModel.inputText = text
+        viewModel.sendMessage()
+        textField.text = ""
+    }
+    
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
+    }
+    
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return viewModel.messages.count
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ChatMessageCell", for: indexPath) as! ChatMessageCell
+        cell.configure(with: viewModel.messages[indexPath.row])
+        return cell
+    }
+    
+    private func scrollToBottom() {
+        guard viewModel.messages.count > 0 else { return }
+        let indexPath = IndexPath(row: viewModel.messages.count - 1, section: 0)
+        tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
+    }
+    
+    @objc private func keyboardWillShow(notification: NSNotification) {
+        if let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
+            view.frame.origin.y = -keyboardSize.height + (tabBarController?.tabBar.frame.height ?? 0)
+        }
+    }
+
+    @objc private func keyboardWillHide(notification: NSNotification) {
+        view.frame.origin.y = 0
+    }
+}
+
+class ChatMessageCell: UITableViewCell {
+    private let bubbleView = UIView()
+    private let messageLabel = UILabel()
+    private var leadingConstraint: NSLayoutConstraint!
+    private var trailingConstraint: NSLayoutConstraint!
+    
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        selectionStyle = .none
+        
+        bubbleView.layer.cornerRadius = 20
+        bubbleView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(bubbleView)
+        
+        messageLabel.numberOfLines = 0
+        messageLabel.font = .systemFont(ofSize: 16)
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        bubbleView.addSubview(messageLabel)
+        
+        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        
+        NSLayoutConstraint.activate([
+            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+            bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.75),
+            
+            messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 10),
+            messageLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -10),
+            messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 14),
+            messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -14)
+        ])
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+    
+    func configure(with message: ChatMessage) {
+        messageLabel.text = message.text
+        if message.isUser {
+            bubbleView.backgroundColor = AppTheme.Colors.mainGreen
+            messageLabel.textColor = .white
+            leadingConstraint.isActive = false
+            trailingConstraint.isActive = true
+        } else {
+            bubbleView.backgroundColor = UIColor.white.withAlphaComponent(0.95)
+            messageLabel.textColor = .black
+            trailingConstraint.isActive = false
+            leadingConstraint.isActive = true
         }
     }
 }

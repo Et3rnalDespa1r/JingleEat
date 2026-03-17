@@ -5,150 +5,171 @@
 //  Created by Даниил on 23.12.2025.
 //
 
-import SwiftUI
+import UIKit
 import PhotosUI
 import AVKit
 
-struct AddVideoView: View {
-    @Environment(\.dismiss) var dismiss
+class AddVideoViewController: UIViewController, PHPickerViewControllerDelegate {
+    private let backgroundView = ChristmasBackgroundView()
+    private let videoContainer = UIView()
+    private let selectButton = UIButton(type: .system)
+    private let descriptionTextView = UITextView()
+    private let publishButton = UIButton(type: .system)
+    private let closeButton = UIButton(type: .system)
     
-    @State private var descriptionText = ""
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedVideoURL: URL?
-    @State private var isSaving = false
+    private var playerViewController: AVPlayerViewController?
+    private var selectedVideoURL: URL? {
+        didSet { updateUI() }
+    }
     
-    var body: some View {
-        NavigationView {
-            ZStack {
-                ChristmasBackground()
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 20) {
-                    if let url = selectedVideoURL {
-                        ZStack(alignment: .topTrailing) {
-                            VideoPlayer(player: AVPlayer(url: url))
-                                .frame(height: 300)
-                                .cornerRadius(12)
-                            
-                            Button(action: {
-                                selectedVideoURL = nil
-                                selectedItem = nil
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title)
-                                    .foregroundColor(.white)
-                                    .padding(8)
-                            }
-                        }
-                    } else {
-                        PhotosPicker(selection: $selectedItem, matching: .videos) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.white.opacity(0.5))
-                                    .frame(height: 300)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(style: StrokeStyle(lineWidth: 2, dash: [5]))
-                                            .foregroundColor(Color(red: 0.35, green: 0.18, blue: 0.05))
-                                    )
-                                
-                                VStack {
-                                    Image(systemName: "plus.viewfinder")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(Color(red: 0.11, green: 0.38, blue: 0.19))
-                                    Text("Выбрать видео")
-                                        .font(.headline)
-                                        .foregroundColor(Color(red: 0.11, green: 0.38, blue: 0.19))
-                                }
-                            }
-                        }
-                    }
-                    
-                    TextField("Напиши рецепт или описание...", text: $descriptionText, axis: .vertical)
-                        .lineLimit(3...6)
-                        .padding()
-                        .background(Color.white.opacity(0.8))
-                        .cornerRadius(12)
-                        .foregroundColor(.black)
-                    
-                    Spacer()
-                    
-                    Button(action: saveVideo) {
-                        if isSaving {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text("Опубликовать")
-                                .bold()
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background((selectedVideoURL == nil || descriptionText.isEmpty) ? Color.gray : Color(red: 0.11, green: 0.38, blue: 0.19))
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                    .disabled(selectedVideoURL == nil || descriptionText.isEmpty || isSaving)
-                }
-                .padding()
-            }
-            .navigationTitle("Новый рецепт")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Отмена") { dismiss() }
-                        .foregroundColor(Color(red: 0.35, green: 0.18, blue: 0.05))
-                }
-            }
-            .onChange(of: selectedItem) { newItem in
-                guard let newItem = newItem else { return }
-                
-                Task {
-                    if let movie = try? await newItem.loadTransferable(type: MovieTransferable.self) {
-                        await MainActor.run {
-                            self.selectedVideoURL = movie.url
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear {
-             UINavigationBar.appearance().backgroundColor = .clear
-             UINavigationBar.appearance().setBackgroundImage(UIImage(), for: .default)
-             UINavigationBar.appearance().shadowImage = UIImage()
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+    
+    private func setupUI() {
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundView)
+        
+        navigationItem.title = "Новый рецепт"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Отмена", style: .plain, target: self, action: #selector(cancelTapped))
+        navigationItem.leftBarButtonItem?.tintColor = AppTheme.Colors.chocolate
+        
+        videoContainer.backgroundColor = UIColor.white.withAlphaComponent(0.5)
+        videoContainer.layer.cornerRadius = 12
+        videoContainer.layer.borderWidth = 2
+        videoContainer.layer.borderColor = AppTheme.Colors.chocolate.cgColor
+        videoContainer.clipsToBounds = true
+        videoContainer.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(videoContainer)
+        
+        selectButton.setTitle("Выбрать видео", for: .normal)
+        selectButton.setImage(UIImage(systemName: "plus.viewfinder"), for: .normal)
+        selectButton.tintColor = AppTheme.Colors.mainGreen
+        selectButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
+        selectButton.translatesAutoresizingMaskIntoConstraints = false
+        selectButton.addTarget(self, action: #selector(selectTapped), for: .touchUpInside)
+        videoContainer.addSubview(selectButton)
+        
+        closeButton.setImage(UIImage(systemName: "xmark.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 24)), for: .normal)
+        closeButton.tintColor = .white
+        closeButton.isHidden = true
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.addTarget(self, action: #selector(removeVideo), for: .touchUpInside)
+        videoContainer.addSubview(closeButton)
+        
+        descriptionTextView.text = "Напиши рецепт или описание..."
+        descriptionTextView.textColor = .lightGray
+        descriptionTextView.font = .systemFont(ofSize: 16)
+        descriptionTextView.backgroundColor = UIColor.white.withAlphaComponent(0.8)
+        descriptionTextView.layer.cornerRadius = 12
+        descriptionTextView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(descriptionTextView)
+        
+        publishButton.setTitle("Опубликовать", for: .normal)
+        publishButton.backgroundColor = .gray
+        publishButton.setTitleColor(.white, for: .normal)
+        publishButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
+        publishButton.layer.cornerRadius = 12
+        publishButton.isEnabled = false
+        publishButton.translatesAutoresizingMaskIntoConstraints = false
+        publishButton.addTarget(self, action: #selector(publishTapped), for: .touchUpInside)
+        view.addSubview(publishButton)
+        
+        NSLayoutConstraint.activate([
+            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            
+            videoContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            videoContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            videoContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            videoContainer.heightAnchor.constraint(equalToConstant: 300),
+            
+            selectButton.centerXAnchor.constraint(equalTo: videoContainer.centerXAnchor),
+            selectButton.centerYAnchor.constraint(equalTo: videoContainer.centerYAnchor),
+            
+            closeButton.topAnchor.constraint(equalTo: videoContainer.topAnchor, constant: 8),
+            closeButton.trailingAnchor.constraint(equalTo: videoContainer.trailingAnchor, constant: -8),
+            
+            descriptionTextView.topAnchor.constraint(equalTo: videoContainer.bottomAnchor, constant: 20),
+            descriptionTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            descriptionTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            descriptionTextView.heightAnchor.constraint(equalToConstant: 100),
+            
+            publishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            publishButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            publishButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            publishButton.heightAnchor.constraint(equalToConstant: 50)
+        ])
+    }
+    
+    @objc private func cancelTapped() {
+        dismiss(animated: true)
+    }
+    
+    @objc private func selectTapped() {
+        var config = PHPickerConfiguration()
+        config.filter = .videos
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    
+    @objc private func removeVideo() {
+        selectedVideoURL = nil
+        playerViewController?.view.removeFromSuperview()
+        playerViewController?.removeFromParent()
+        playerViewController = nil
+    }
+    
+    private func updateUI() {
+        let hasVideo = selectedVideoURL != nil
+        selectButton.isHidden = hasVideo
+        closeButton.isHidden = !hasVideo
+        publishButton.backgroundColor = hasVideo ? AppTheme.Colors.mainGreen : .gray
+        publishButton.isEnabled = hasVideo
+        
+        if let url = selectedVideoURL {
+            let player = AVPlayer(url: url)
+            let vc = AVPlayerViewController()
+            vc.player = player
+            vc.view.frame = videoContainer.bounds
+            vc.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            addChild(vc)
+            videoContainer.insertSubview(vc.view, belowSubview: closeButton)
+            vc.didMove(toParent: self)
+            playerViewController = vc
         }
     }
     
-    private func saveVideo() {
-        guard let tempUrl = selectedVideoURL else { return }
-        isSaving = true
+    @objc private func publishTapped() {
+        guard let url = selectedVideoURL else { return }
+        publishButton.setTitle("Сохранение...", for: .normal)
+        publishButton.isEnabled = false
         
         Task {
-            if let savedFileName = StorageService.shared.saveVideoToDocuments(from: tempUrl) {
-                StorageService.shared.addNewVideo(filename: savedFileName, description: descriptionText)
-                
+            if let savedFileName = StorageService.shared.saveVideoToDocuments(from: url) {
+                StorageService.shared.addNewVideo(filename: savedFileName, description: descriptionTextView.text ?? "")
                 await MainActor.run {
-                    isSaving = false
-                    dismiss()
+                    dismiss(animated: true)
                 }
             }
         }
     }
-}
-
-struct MovieTransferable: Transferable {
-    let url: URL
     
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .movie) { movie in
-            SentTransferredFile(movie.url)
-        } importing: { received in
-            let copy = FileManager.default.temporaryDirectory.appendingPathComponent(received.file.lastPathComponent)
-            if FileManager.default.fileExists(atPath: copy.path) {
-                try? FileManager.default.removeItem(at: copy)
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else { return }
+        provider.loadFileRepresentation(forTypeIdentifier: "public.movie") { [weak self] url, error in
+            guard let url = url else { return }
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.removeItem(at: tempDir)
+            try? FileManager.default.copyItem(at: url, to: tempDir)
+            DispatchQueue.main.async {
+                self?.selectedVideoURL = tempDir
             }
-            try FileManager.default.copyItem(at: received.file, to: copy)
-            return Self(url: copy)
         }
     }
 }
-
